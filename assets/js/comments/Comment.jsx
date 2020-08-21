@@ -4,7 +4,8 @@ import { usePaginatedFetch, useFetch } from './hooks'
 import {Icon} from '../components/Icon'
 import {Field} from '../components/Form'
 
-
+const VIEW = "VIEW"
+const EDIT = "EDIT"
 const dateFormat = {
      dateStyle: "medium",
      timestyle: "short"
@@ -15,24 +16,57 @@ function Title({count}){
         {count} Commentaire{count > 1 ? 's': ''} </h3>
 }
 
-function Comments(post,user){
-    const {items : comments,setItems: setComments, load,loading,count,hasMore} = usePaginatedFetch('/api/comments?post='+post.post)
+function Comments({post,user}){
+    const {items : comments,setItems: setComments, load,loading,setCount, count,hasMore} = usePaginatedFetch('/api/comments?post='+post)
+    console.log(count)
     const addComment = useCallback(comment => {
-        console.log(comment)
         setComments(comments => [comment,...comments])
-    },[])
+        // count++
+        setCount(count + 1)
+        console.log(count,"eeee")
+    },[count])
+    const deleteComment = useCallback(comment => {
+        setComments(comments => comments.filter(c => c !== comment))
+        setCount(count - 1)
+        console.log(count,"eeee")
+    },[count])
+    const updateComment = useCallback((newComment, oldComment) => {
+        setComments(comments => comments.map(c => c === oldComment ? newComment : c))
+        setCount(count - 1)
+        console.log(count,"eeee")
+    },[count])
     useEffect(() =>{
         load()
+
     },[])
     return <div>
-        <Title count={count}/>
-        {post.user && <CommentForm post={post.post} onComment={addComment}/>}
-        {comments.map(comment => <Comment key={comment.id} comment={comment} />)}
+        <Title count={count} />
+        {user && <CommentForm post={post.post} onComment={addComment}/>}
+        
+        {comments.map((comment, index) => <Comment 
+                                key={comment.id} 
+                                comment={comment} 
+                                canEdit={comment.author.id === user}
+                                onDelete={deleteComment}
+                                onUpdate={updateComment}
+                                />)}
         {hasMore && <button disabled={loading} className="btn btn-primary" onClick={load}>Charger plus de commentaires</button>}
     </div>
 }
-const Comment = React.memo(({comment}) => {
+const Comment = React.memo(({comment,canEdit, onUpdate,onDelete}) => {
+    const[state, setState] = useState(VIEW)
+    const toggleEdit =useCallback(() => {
+        setState(state => state === VIEW ? EDIT : VIEW)
+    },[])
+    const onComment = useCallback((newComment) => {
+        onUpdate(newComment, comment)
+        toggleEdit()
+    },[comment])
     const date =  new Date(comment.publishedAt)
+    const onDeleteCallback = useCallback(() =>{
+        onDelete(comment)
+    },[comment])
+    const {loading : loadingdelete, load : callDelete} = useFetch(comment["@id"],"DELETE", onDeleteCallback)
     return <div className="row post-comment">
         <h4 className="col-sm-3">
             <strong>{comment.author.username}</strong>
@@ -40,18 +74,32 @@ const Comment = React.memo(({comment}) => {
             <strong>{date.toLocaleString(undefined, dateFormat)}</strong>
         </h4>
         <div className="col-sm-9">
-            <p>{comment.content}</p>
+            {state === VIEW ?
+            <p>{comment.content}</p> :
+            <CommentForm comment={comment} onComment={onComment} onCancel={toggleEdit}/>
+            }
+            {(canEdit && state !== EDIT) && <p>
+                <button className="btn btn-danger" onClick={callDelete.bind(this, null)} disabled={loadingdelete}>
+                    <Icon icon="trash" /> Supprimer
+                </button>
+                <button className="btn btn-secondary" onClick={toggleEdit}>
+                    <Icon icon="pen" /> Editer
+                </button>
+                </p>}
         </div>
     </div>
 }) 
-const CommentForm = React.memo(({post, onComment}) => {
+const CommentForm = React.memo(({post = null, onComment, comment = null, onCancel = null}) => {
     const ref = useRef(null)
     const onSuccess = useCallback(comment => {
         console.log(comment,'gggggg')
         onComment(comment)
         ref.current.value = ""
+       
     },[ref, onComment])
-    const {load, loading, errors,clearError} = useFetch("/api/comments", "POST", onSuccess)
+    const method= comment ? 'PUT' : 'POST'
+    const url = comment ?comment["@id"] : "api/comments"
+    const {load, loading, errors, clearError} = useFetch(url, method, onSuccess)
     const onSubmit = useCallback(e => {
         e.preventDefault()
         load({
@@ -59,6 +107,11 @@ const CommentForm = React.memo(({post, onComment}) => {
             post : "/api/posts/"+post
         }, [load, ref, post])
     })
+    useEffect(() => {
+        if(comment && comment.content && ref.current){
+            ref.current.value = comment.content
+        }
+    }, [comment, ref])
     return <div>
         <form onSubmit={onSubmit}>
             <fieldset>
@@ -76,8 +129,11 @@ const CommentForm = React.memo(({post, onComment}) => {
                 Votre commentaire</Field>
             <div className="form-group">
                 <button className="btn btn-primary" disabled={loading}>
-                    <Icon icon="paper-plane" /> Envoyer
+                    <Icon icon="paper-plane" /> {comment === null ? "Envoyer" : "Editer"}
                 </button>
+                {onCancel && <button className="btn btn-secondary" onClick={onCancel}>
+                    Annuler
+                    </button>}
             </div>
         </form>
 
@@ -88,7 +144,8 @@ class CommentsElement extends HTMLElement{
     connectedCallback(){
         const post = parseInt(this.dataset.post,10)
         const user = parseInt(this.dataset.user,10) || null
-        render( <Comments key={post.post} post={post} user={user} />,this)
+        console.log(post,"tata")
+        render( <Comments  post={post} user={user} />,this)
     }
     disconnectedCallback(){
         unmountComponentAtNode(this)

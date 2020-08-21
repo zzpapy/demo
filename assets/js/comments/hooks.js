@@ -42,7 +42,7 @@ export function usePaginatedFetch(url){
                 if(response["hydra:view"] && response["hydra:view"]["hydra:next"]){
                     setNext(response["hydra:view"]["hydra:next"])
                 }
-                
+               
             }
             else{
                 console.log(response)
@@ -58,6 +58,7 @@ export function usePaginatedFetch(url){
         load,
         loading,
         count,
+        setCount,
         setItems,
         hasMore: next !== null
     }
@@ -66,30 +67,32 @@ export function usePaginatedFetch(url){
 export function useFetch(url, method = "POST", callback = null){
     const [errors, setErrors] = useState({})
     const [loading, setLoading] = useState(false)
+    const [count,setCount] = useState(0)
     const load = useCallback(async (data = null) => {
+        setLoading(true)
         try{
             const response =  await jsonldFetch(url, method, data)
+            setLoading(false)
             if(callback){
-                callback(data)
+                callback(response)
             }
-            console.log(response.id)
-            if(response.violations){
-                setErrors(response.violations.reduce((acc, violation) => {
+            // if(response.violations){
+            //     setErrors(response.violations.reduce((acc, violation) => {
+            //         acc[violation.propertyPath] = violation.message
+            //         // console.log(error.violations)
+            //         return acc
+            //     }, {}))
+            // }
+        }
+        catch(error){
+            setLoading(true)
+            if(error.violations){
+                setErrors(error.violations.reduce((acc, violation) => {
                     acc[violation.propertyPath] = violation.message
-                    // console.log(error.violations)
+                    console.log(error.violations)
                     return acc
                 }, {}))
             }
-            else{
-                return response
-            }
-        }
-        catch(error){
-            setErrors(error.violations.reduce((acc, violation) => {
-                acc[violation.propertyPath] = violation.message
-                console.log(error.violations)
-                return acc
-            }, {}))
             
         }
     },[url, method, callback])
@@ -102,7 +105,8 @@ export function useFetch(url, method = "POST", callback = null){
         loading,
         errors,
         load,
-        clearError
+        clearError,
+        setCount
 
     }
 }
